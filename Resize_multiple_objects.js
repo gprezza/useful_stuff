@@ -11,8 +11,8 @@ function resizeObjects(objects) {
         
         var oldSizeWidth = obj.SizeWidth;
         var oldSizeHeight = obj.SizeHeight;
-        var newSizeWidth = obj.SizeWidth * fac;
-        var newSizeHeight = obj.SizeHeight * fac;
+        var newSizeWidth = oldSizeWidth * fac;
+        var newSizeHeight = oldSizeHeight * fac;
         
         obj.SizeWidth = newSizeWidth;
         obj.SizeHeight = newSizeHeight;

@@ -1,106 +1,127 @@
-library(plyr)
+library("plotly")
 library(htmlwidgets)
 library(htmltools)
-library("plotly")
 
-range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+vline <- function(x = 0, color = "grey") {
+  list(type = "line", y0 = 0, y1 = 1, yref = "paper", x0 = x, x1 = x, line = list(color = color, width = 1, dash = 'dot'))
+} #function to draw vertical line
 
-make_volcanoPlot <- function(data_tab,FDRtresh,logFCtresh,url,plot_title){
-  volcTable <- data_tab[c("genes", "logFC", "FDR")]
-  # Group genes based on values:
-  volcTable["group"] <- "other"
-  significant <- sprintf("FDR < %s", FDRtresh)
-  high_FC <- sprintf("|logFC| > %s", logFCtresh)
-  sig_and_FC <- sprintf("|logFC| > %s and FDR < %s", logFCtresh, FDRtresh)
-  volcTable[which(volcTable['FDR'] < FDRtresh & abs(volcTable['logFC']) < logFCtresh ),"group"] <- significant
-  volcTable[which(volcTable['FDR'] > FDRtresh & abs(volcTable['logFC']) > logFCtresh ),"group"] <- high_FC
-  volcTable[which(volcTable['FDR'] < FDRtresh & abs(volcTable['logFC']) > logFCtresh ),"group"] <- sig_and_FC
-  # Find and label the top peaks:
-  top_up <- volcTable[ which(volcTable$FDR < FDRtresh & volcTable$logFC >= logFCtresh),]
-  if (length(rownames(top_up))>0){
-    top_up$logFC.scaled <- range01(top_up$logFC)
-    top_up$FDR.scaled <- range01(-log(top_up$FDR))
-    top_up$sum <- (top_up$logFC.scaled + top_up$FDR.scaled)
-    top_up <- top_up[order(-top_up$sum),][1:5,]
-  }
-  top_down <- volcTable[ which(volcTable$FDR < FDRtresh & volcTable$logFC <= -logFCtresh),]
-  if (length(rownames(top_down))>0){
-    top_down$logFC.scaled <- range01(-top_down$logFC)
-    top_down$FDR.scaled <- range01(-log(top_down$FDR))
-    top_down$sum <- (top_down$logFC.scaled + top_down$FDR.scaled)
-    top_down <- top_down[order(-top_down$sum),][1:5,]
-  }
-  top_peaks <- rbind.fill(top_up, top_down)
-  top_peaks <- na.omit(top_peaks)
-  # Add gene labels for all of the top genes we found
-  # here we are creating an empty list, and filling it with entries for each row in the dataframe
-  # each list entry is another list with named items that will be used by Plot.ly
-  ann <- list()
-  for (i in seq_len(nrow(top_peaks))) {
-    m <- top_peaks[i, ]
-    ann[[i]] <- list(
-      x = m[["logFC"]]+.03,
-      y = -log10(m[["FDR"]])+.03,
-      text = m[["genes"]],
-      font = list(size = 14),
-      xref = "x",
-      yref = "y",
-      showarrow = TRUE,
-      arrowhead = 0.5,
-      ax = 20,
-      ay = -30
-    )
-  }
-  # make the Plot.ly plot:
-  pal <- c("#d16411", "blue", "#1adb44","black")
-  pal <- setNames(pal, c(significant, high_FC, sig_and_FC,"other"))
-  #function to add vertical line to the plot:
-  vline <- function(x = 0, color = "grey") {list(type = "line", y0 = 0, y1 = 1, yref = "paper", x0 = x, x1 = x, line = list(color = color, width = 1, dash = 'dot'))}
-  #make the plot:
-  p <- plot_ly(data = volcTable, x = volcTable$logFC, y = -log10(volcTable$FDR), text = volcTable$genes, mode = "markers", color = ~volcTable$group, colors=pal,type = "scatter") %>%
-    layout(title=list(text = plot_title, font = list(size = 20)))%>%
+interactive_volcano_plot <-function(data_tab, logFCtresh, url, title){
+  #make the base plot:
+  p = plot_ly(data = data_tab, 
+              x = ~logFC, y = ~-log10(FDR),
+              # control of marker properties (size and border color):
+              type = "scatter",mode = "markers",
+              height = 1000, text = ~locus_tag,
+              marker = list(size = 15,
+                            color = "#bbbbbb",
+                            line = list(width = 1, color = "#424242"),
+                            opacity=0.7)
+  ) %>%
+    layout(title=list(text = sub("\n","",title), font = list(size = 20)))%>% #add title
     layout(margin = list(t = 35))%>% #extends top margin to fit title
     layout(xaxis = list(title = "logFC",titlefont = list(size = 20)))%>%
     layout(yaxis = list(title = "-log<sub>10</sub>FDR",titlefont = list(size = 20)))%>%
     layout(hoverlabel = list(font=list(size=14)))%>% #font size of hover boxes
     layout(legend = list(font=list(size=16)))%>% #font size of legend
-    layout(annotations = ann)%>%
-    layout(shapes = list(vline(logFCtresh),vline(-logFCtresh)))%>%
-    onRender("
-                        function(el,x,data) {
-                        el.on('plotly_click', function(d) {
-                        if (typeof d.points[0].data.text == 'string') {
-                                var gene_name = d.points[0].data.text;
-                        } else {
-                                var gene_name = d.points[0].data.text[d.points[0].pointNumber];
-                        };
-                        var full_url = data + gene_name;
-                        window.open(full_url);
-                        });
-                        }
-                        ", data=url)
+    layout(shapes = list(vline(logFCtresh),vline(-logFCtresh)))%>% #add vertical lines
+    onRender( #function to open url+gene_name when clicking on a data point:
+      "function(el,x,data) {
+        el.on('plotly_click', function(d) {
+          if (typeof d.points[0].data.text == 'string') {
+            var gene_name = d.points[0].data.text;
+          } else {
+          var gene_name = d.points[0].data.text[d.points[0].pointNumber];
+          };
+          var full_url = data + gene_name;
+          window.open(full_url);
+        }
+        );
+       }", data=url)
   # add search box and button:
-  p <- htmlwidgets::appendContent(p, htmltools::tags$input(id='inputText', value='Search gene', ''), htmltools::tags$button(id='buttonSearch', 'Search'))
-  p <- htmlwidgets::appendContent(p, htmltools::tags$script(HTML(
-    'document.getElementById("buttonSearch").addEventListener("click", function()
-                    {
-                      var i = 0;
-                      var j = 0;
-                      var found = [];
-                      var myDiv = document.getElementsByClassName("js-plotly-plot")[0]
-                      var data = JSON.parse(document.querySelectorAll("script[type=\'application/json\']")[0].innerHTML);
-                      for (i = 0 ;i < data.x.data.length; i += 1) {
-                        for (j = 0; j < data.x.data[i].text.length; j += 1) {
-                          if (data.x.data[i].text[j].indexOf(document.getElementById("inputText").value) !== -1) {
-                            found.push({curveNumber: i, pointNumber: j});
-                          }
-                        }
-                      }
-                      Plotly.Fx.hover(myDiv, found);
-                    }
-                  );')))
-  # Save plot to a HTML file in the "plots" subfolder:
-  f <- paste(plot_title,".html",sep="")
-  withr::with_dir('plots', htmlwidgets::saveWidget(as_widget(p), file=f))
-}
+  p = htmlwidgets::appendContent(p, htmltools::tags$input(id='inputText', value='Gene name', ''), htmltools::tags$button(id='buttonSearch', 'Search'))
+  # function to color datapoints matching searched text:
+  p = htmlwidgets::appendContent(p, htmltools::tags$script(HTML(
+    '
+    var colors = ["#0077bb", "#009988", "#ee7733", "#cc3311", "#33bbee"];
+    // Define the function for performing the search and coloring matching points
+    function performSearch() {
+      var j = 0; // point number
+      // get current plot
+      var myDiv = document.getElementsByClassName("js-plotly-plot")[0];
+      // remove legend entry of base trace
+      myDiv.data[0]["showlegend"] = false
+      // add legend
+      var update = {showlegend: true};
+      Plotly.relayout(myDiv, update);
+      // get data of the plot
+      var data = JSON.parse(
+        document.querySelectorAll(\'script[type="application/json"]\')[0].innerHTML);
+      // Get the text entered in the input field
+      var searchTerms = document.getElementById("inputText").value;
+      // Get the name of the gene(s) group
+      if (searchTerms.includes(":")){
+        var searchTerms = searchTerms.split(":");
+        var traceName = searchTerms[0]; // get the custom name
+        searchTerms = searchTerms[1]
+      } else {
+        var traceName = searchTerms
+      }
+      // Get locus tag(s)
+      if (searchTerms.includes(",")){
+        searchTerms = searchTerms.split(",");
+      } else {
+        searchTerms = [searchTerms];
+      }
+      var X = []; // x value(s) of the matched data point(s)
+      var Y = []; // y value(s) of the matched data point(s)
+      var label = []; // locus_tag value(s) of the matched data point(s)
+      // loop through all data points and see if the locus tag matches one in [searchTerms]
+      for (j = 0; j < data.x.data[0].text.length; j += 1) {
+        for (var k = 0; k < searchTerms.length; k++) {
+          if (data.x.data[0].text[j].indexOf(searchTerms[k].trim()) !== -1) {
+            // If searchTerms[k] is in the current gene\'s locus tag,
+            // store the matched data point coordinates in the arrays
+            X.push(data.x.data[0].x[j]);
+            Y.push(data.x.data[0].y[j]);
+            label.push(data.x.data[0].text[j]);
+            break; // Stop searching further for this data point if a match is found
+          }
+        }
+      }
+      console.log(myDiv.data); // to log data structure
+      // Add trace for the selected gene(s)
+      Plotly.addTraces(myDiv,{
+        x: X,
+        y: Y,
+        type: "scatter",
+        mode: "markers",
+        marker: {
+          // pick color:
+          "color": colors[myDiv.data.length-1],
+          "size": 15,
+          "line": {
+            "color": "#424242",
+            "width": 1
+          }
+        },
+        text: label,
+        name: traceName
+      })
+    }
+    ;
 
+    // Run performSearch if clicking on the search button
+    document.getElementById("buttonSearch").addEventListener("click", performSearch);
+    // Run performSearch if enter key is pressed
+    document.getElementById("inputText").addEventListener("keypress", function(event) {
+      if (event.key === "Enter") {
+        performSearch();
+      }
+    }
+    );'
+    )))
+  
+  #save file in current directory:
+  withr::with_dir('./', htmlwidgets::saveWidget(as_widget(p), file=sprintf("%s.html",sub("\n","",title))))
+}

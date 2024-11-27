@@ -10,4 +10,7 @@ R script to do interactive volcano plots with plotly, saved as an html file in t
 Config file for tmux.
 
 ## [Resize_multiple_objects.js](https://github.com/gprezza/useful_stuff/blob/main/Resize_multiple_objects.js)
-javascript macro for CorelDraw to resize all objects in the current selection, while maintaining their relative position. The scaling factor is set in the first line.
+javascript macro for CorelDraw to resize all objects in the current selection by a factor, while maintaining their relative position. The scaling factor is set in the first line.
+
+## [Resize_multiple_objects by size.js](https://github.com/gprezza/useful_stuff/blob/main/Resize_multiple_objects_by_size.js)
+javascript macro for CorelDraw to resize all objects in the current selection to specified height and width values, while maintaining their relative position. The values are set in the first line.
